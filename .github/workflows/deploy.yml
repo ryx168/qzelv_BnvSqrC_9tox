@@ -1,0 +1,50 @@
+name: Deploy to Cloudflare R2
+
+# Near-real-time: every push to main redeploys (usually live in under a minute).
+# workflow_dispatch gives a manual "Run workflow" button in the Actions tab.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-bodyspirit
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync site to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          ENDPOINT: https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          set -euo pipefail
+          # --delete keeps R2 an exact mirror of the repo, so removing a page
+          # in git removes it from the live site too.
+          aws s3 sync . "s3://bodyspirit" \
+            --endpoint-url "$ENDPOINT" \
+            --delete \
+            --exclude ".git/*" \
+            --exclude ".github/*" \
+            --exclude "README.md" \
+            --no-progress
+
+      - name: Verify site responds
+        run: |
+          set -euo pipefail
+          sleep 5
+          for path in "/" "/contact/" "/the-space/"; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" \
+              "https://bodyspirit-static.harryji.workers.dev${path}")
+            echo "${path} -> ${code}"
+            if [ "$code" != "200" ]; then
+              echo "FAILED: ${path} returned ${code}"
+              exit 1
+            fi
+          done
