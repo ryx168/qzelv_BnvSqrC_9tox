@@ -1,47 +1,44 @@
-# bodyspiritcentre.com
+# Static site + on-demand editor
 
-Static site for The Body Spirit Centre. Exported from WordPress 5.8.15 on
-2026-09-02 and now maintained here — WordPress is no longer in the loop.
+The published site is the HTML in this repository. Every push to `main` syncs it
+to Cloudflare R2, where a Worker serves it. There is no server running anywhere
+between edits.
 
-## How to change the site
+## Editing
 
-Edit the HTML and push to `main`. GitHub Actions syncs the repo to Cloudflare R2
-and the site is live, usually in under a minute. Every change is a commit, so
-`git revert` is a working undo.
+`Actions` -> `Edit session` -> `Run workflow`.
 
-Pages live at `<slug>/index.html`, e.g. `contact/index.html` serves `/contact/`.
+About two minutes later WordPress is reachable at the editor hostname. Edit as
+normal. When you finish, close the tab; after the idle timeout (default 60
+minutes) the session saves, exports the site to static HTML, commits it here,
+and the deploy workflow puts it live.
 
-## How it is served
+- The database and `wp-content` live in the `bodyspirit-wp` R2 bucket. They are
+  restored at the start of a session and written back **every five minutes**,
+  so a runner that dies loses at most five minutes of work.
+- Dated database copies are kept under `history/` in that bucket, so a bad edit
+  can be rolled back.
+- Only one session can run at a time; a second would overwrite the first.
+- A session cannot exceed six hours. That is a GitHub limit, not a setting.
 
-```
-GitHub (main)  --Actions-->  R2 bucket "bodyspirit"  --> Worker "bodyspirit-static"  --> visitors
-```
+## Two things to keep true
 
-The Worker resolves directory URLs to `index.html` and refuses to serve
-`.php`, `.cgi`, `.sql`, `.zip`, `.bak`, `.ini`, `.log` and `/cgi-bin/`, so no
-leftover server-side file can ever be returned as source text.
+**The database must never be committed here.** This repository is public and
+`wp_users` contains password hashes and email addresses. `.gitignore` blocks the
+patterns and the workflow unstages them again before committing.
 
-## Required repository secrets
+**WordPress state does not belong in the `bodyspirit` bucket.** The deploy
+workflow runs `aws s3 sync --delete` against it, so anything there that is not
+in this repository gets deleted. That is why the state has its own bucket.
 
-| Secret | Value |
-|---|---|
+## Secrets this repository needs
+
+| Secret | What it is |
+| --- | --- |
 | `CF_ACCOUNT_ID` | Cloudflare account id |
-| `R2_ACCESS_KEY_ID` | R2 access key (Cloudflare API token id) |
-| `R2_SECRET_ACCESS_KEY` | R2 secret (SHA-256 of the API token string) |
+| `R2_ACCESS_KEY_ID` | R2 access key (a Cloudflare API token id) |
+| `R2_SECRET_ACCESS_KEY` | SHA-256 of that API token's string |
+| `CF_TUNNEL_TOKEN` | token for the `cloudflared` tunnel serving the editor |
 
-## What was lost leaving WordPress
-
-These were checked before migrating and none were in use:
-
-- **Comments** — already disabled site-wide by the `disable-comments` plugin
-- **Contact form** — `/contact/` had no server-side form, only contact details
-- **Search** (`/?s=`) — no longer functional; would need a client-side index
-- **GigPress events** — `/events/` is now static and updates by editing HTML
-- **wp-json / xmlrpc / RSS feeds** — removed; those endpoints no longer exist
-
-## Archive
-
-The original WordPress database is dumped to
-`bodyspir_wordpress_20260902.sql.gz` (16 tables) and kept outside this repo.
-The full original `public_html` remains on the old origin server until it is
-decommissioned.
+Actions logs on a public repository are world-readable, so nothing here may be
+echoed to the log.

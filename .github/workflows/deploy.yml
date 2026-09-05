@@ -1,14 +1,13 @@
-name: Deploy to Cloudflare R2
+name: Deploy static site
 
-# Near-real-time: every push to main redeploys (usually live in under a minute).
-# workflow_dispatch gives a manual "Run workflow" button in the Actions tab.
+# Every push to main redeploys (live in well under a minute).
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: deploy-bodyspirit
+  group: deploy-site
   cancel-in-progress: true
 
 jobs:
@@ -25,13 +24,15 @@ jobs:
           ENDPOINT: https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
           set -euo pipefail
-          # --delete keeps R2 an exact mirror of the repo, so removing a page
-          # in git removes it from the live site too.
+          # --delete keeps the bucket an exact mirror of the repo, so removing a
+          # page here removes it from the live site. This is exactly why the
+          # WordPress state lives in a SEPARATE bucket -- it would be wiped.
           aws s3 sync . "s3://bodyspirit" \
             --endpoint-url "$ENDPOINT" \
             --delete \
             --exclude ".git/*" \
             --exclude ".github/*" \
+            --exclude "tools/*" \
             --exclude "README.md" \
             --no-progress
 
@@ -40,11 +41,7 @@ jobs:
           set -euo pipefail
           sleep 5
           for path in "/" "/contact/" "/the-space/"; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" \
-              "https://bodyspirit-static.harryji.workers.dev${path}")
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://www.bodyspiritcentre.com${path}")
             echo "${path} -> ${code}"
-            if [ "$code" != "200" ]; then
-              echo "FAILED: ${path} returned ${code}"
-              exit 1
-            fi
+            [ "$code" = "200" ] || { echo "FAILED: ${path} -> ${code}"; exit 1; }
           done

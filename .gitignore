@@ -1,0 +1,7 @@
+# This repository is PUBLIC. The WordPress database must never land in it:
+# wp_users holds password hashes and email addresses. State lives in R2 only.
+*.sql
+*.sql.gz
+*.tar.gz
+wp-config.php
+.env
