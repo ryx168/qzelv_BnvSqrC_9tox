@@ -28,6 +28,19 @@ rm -rf "$WP_DIR/wp-content"
 tar xzf /tmp/wp-content.tar.gz -C "$WP_DIR"
 echo "core $(grep -oP "(?<=\\\$wp_version = ')[^']+" "$WP_DIR/wp-includes/version.php")"
 
+# /assets lives at the document root on the old server, OUTSIDE WordPress, and
+# the theme's inline CSS points at it. Without it those URLs 404, wget saves
+# the 404 pages as "arrow.gif.html", and --convert-links rewrites every page to
+# match -- silently stripping the header, backgrounds and nav imagery from the
+# whole site. The repository is the authority for these files.
+REPO="${GITHUB_WORKSPACE:-$(pwd)}"
+for extra in assets; do
+  if [ -d "$REPO/$extra" ]; then
+    cp -r "$REPO/$extra" "$WP_DIR/"
+    echo "seeded /$extra from the repo ($(find "$REPO/$extra" -type f | wc -l) files)"
+  fi
+done
+
 echo "--- wp-config.php ---"
 # WP_HOME/WP_SITEURL as constants beat whatever is stored in the database, so
 # the editor works on the tunnel hostname without touching site content. The

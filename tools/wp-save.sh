@@ -95,6 +95,16 @@ find "$OUT" -name '*.html' -print0 | xargs -0 perl -pi -e "
   s#<link[^>]+rel=[\"'](?:pingback|EditURI|wlwmanifest|alternate|https://api\.w\.org/)[\"'][^>]*>##g;
 "
 
+# An asset URL that returns HTML gets saved as "arrow.gif.html", and every page
+# is rewritten to point at it. That always means a file is missing from the
+# runner, never a real page, and publishing it would strip the site's imagery.
+bogus=$(find "$OUT" -regextype posix-extended -regex '.*\.(jpg|jpeg|png|gif|css|js)\.html' | head -20)
+if [ -n "$bogus" ]; then
+  echo "REFUSING to publish: these asset URLs returned HTML, so files are missing:"
+  echo "$bogus" | sed "s#^${OUT}#  #"
+  exit 1
+fi
+
 pages=$(find "$OUT" -name '*.html' | wc -l)
 echo "exported $pages html files"
 if [ "$pages" -lt 10 ]; then
