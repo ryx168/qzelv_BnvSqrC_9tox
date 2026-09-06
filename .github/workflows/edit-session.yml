@@ -21,6 +21,10 @@ on:
         description: "Publish to the live site when the session ends"
         type: boolean
         default: true
+      tunnel:
+        description: "Open the editor tunnel. Off = dry run: boot and export only, nothing exposed"
+        type: boolean
+        default: true
 
 concurrency:
   # Never two sessions at once -- the second would overwrite the first's work.
@@ -56,6 +60,7 @@ jobs:
         run: sudo -E bash tools/wp-boot.sh
 
       - name: Open tunnel
+        if: inputs.tunnel
         env:
           TUNNEL_TOKEN: ${{ secrets.CF_TUNNEL_TOKEN }}
         run: |
@@ -75,6 +80,7 @@ jobs:
           echo "::notice title=Editor ready::https://${EDIT_HOST}/wp-admin/"
 
       - name: Hold the session open, autosaving
+        if: inputs.tunnel
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
