@@ -36,7 +36,26 @@ echo "--- export to static ---"
 # mirror over /etc/hosts (which points the live host at this runner).
 sed -i "s#https://[a-z.]*bodyspiritcentre.com'#https://${LIVE_HOST}'#g" "$WP_DIR/wp-config.php"
 grep -n "WP_HOME\|WP_SITEURL" "$WP_DIR/wp-config.php"
-sleep 2
+
+# Each workflow step gets its own sudo session, and the PHP server started in
+# the boot step does not reliably survive into this one. Rather than depend on
+# that, make this step self-sufficient: start the server if nothing answers.
+if ! curl -s -o /dev/null --max-time 5 "http://127.0.0.1/"; then
+  echo "php server is not up -- starting one for the export"
+  export PHP_CLI_SERVER_WORKERS=6
+  setsid nohup php -S 0.0.0.0:80 -t "$WP_DIR" "$WP_DIR/router.php" > /tmp/php-export.log 2>&1 &
+fi
+for _ in $(seq 1 30); do
+  code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: ${LIVE_HOST}" http://127.0.0.1/)
+  [ "$code" = "200" ] && break
+  sleep 1
+done
+echo "serving as ${LIVE_HOST}: $code"
+if [ "$code" != "200" ]; then
+  echo "cannot serve the site locally -- aborting before the export"
+  tail -20 /tmp/php-export.log /tmp/php.log 2>/dev/null
+  exit 1
+fi
 
 OUT=/tmp/mirror
 rm -rf "$OUT"; mkdir -p "$OUT"

@@ -81,7 +81,7 @@ grep -q "$LIVE_HOST" /etc/hosts || echo "127.0.0.1 $LIVE_HOST" >> /etc/hosts
 # Without workers, php -S is single-threaded and wp-admin deadlocks the moment
 # it makes a second request to itself (admin-ajax, cron).
 export PHP_CLI_SERVER_WORKERS=6
-nohup php -S 0.0.0.0:80 -t "$WP_DIR" "$WP_DIR/router.php" > /tmp/php.log 2>&1 &
+setsid nohup php -S 0.0.0.0:80 -t "$WP_DIR" "$WP_DIR/router.php" > /tmp/php.log 2>&1 &
 
 # Ask as the editor hostname. A bare request to 127.0.0.1 gets a 301, because
 # WP_HOME is the edit host and WordPress canonicalises to it -- that is correct
