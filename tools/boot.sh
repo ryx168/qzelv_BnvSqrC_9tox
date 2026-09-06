@@ -1,10 +1,10 @@
 #!/bin/bash
-# Bring up WordPress inside the runner from the state restored out of R2.
+# Bring the application up inside the runner from the state restored out of R2.
 # Runs as root (the workflow calls it with sudo -E) so it can bind port 80 and
 # write /etc/hosts.
 set -euo pipefail
 
-WP_DIR="${WP_DIR:-/opt/wp}"
+APP_DIR="${APP_DIR:?}"
 EDIT_HOST="${EDIT_HOST:?}"
 LIVE_HOST="${LIVE_HOST:?}"
 
@@ -16,19 +16,19 @@ mysql -uroot -proot -e "CREATE USER 'wp'@'localhost' IDENTIFIED BY 'wp'; GRANT A
 gunzip -c /tmp/db.sql.gz | mysql -uroot -proot wordpress
 echo "tables: $(mysql -uroot -proot -N -B -e 'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema="wordpress";')"
 
-echo "--- WordPress core ---"
+echo "--- app core ---"
 # Latest core, not the origin's ancient 5.8.15 -- that predates PHP 8 and will
 # not run on a modern runner. wp-content (theme, plugins, uploads) is the
 # site's own, so the look is unchanged; core is disposable and rebuilt each
 # session. If a theme or plugin ever breaks on a new core, pin a version here.
-mkdir -p "$WP_DIR"
+mkdir -p "$APP_DIR"
 curl -fsSL https://wordpress.org/latest.tar.gz -o /tmp/wp.tar.gz
-tar xzf /tmp/wp.tar.gz -C "$WP_DIR" --strip-components=1
-rm -rf "$WP_DIR/wp-content"
-tar xzf /tmp/wp-content.tar.gz -C "$WP_DIR"
-echo "core $(grep -oP "(?<=\\\$wp_version = ')[^']+" "$WP_DIR/wp-includes/version.php")"
+tar xzf /tmp/wp.tar.gz -C "$APP_DIR" --strip-components=1
+rm -rf "$APP_DIR/wp-content"
+tar xzf /tmp/wp-content.tar.gz -C "$APP_DIR"
+echo "core $(grep -oP "(?<=\\\$wp_version = ')[^']+" "$APP_DIR/wp-includes/version.php")"
 
-# /assets lives at the document root on the old server, OUTSIDE WordPress, and
+# /assets lives at the document root on the old server, outside the application, and
 # the theme's inline CSS points at it. Without it those URLs 404, wget saves
 # the 404 pages as "arrow.gif.html", and --convert-links rewrites every page to
 # match -- silently stripping the header, backgrounds and nav imagery from the
@@ -36,7 +36,7 @@ echo "core $(grep -oP "(?<=\\\$wp_version = ')[^']+" "$WP_DIR/wp-includes/versio
 REPO="${GITHUB_WORKSPACE:-$(pwd)}"
 for extra in assets; do
   if [ -d "$REPO/$extra" ]; then
-    cp -r "$REPO/$extra" "$WP_DIR/"
+    cp -r "$REPO/$extra" "$APP_DIR/"
     echo "seeded /$extra from the repo ($(find "$REPO/$extra" -type f | wc -l) files)"
   fi
 done
@@ -44,11 +44,11 @@ done
 echo "--- wp-config.php ---"
 # WP_HOME/WP_SITEURL as constants beat whatever is stored in the database.
 # They are set to the LIVE host because the admin is reached through it -- the
-# Worker proxies /wp-admin to the tunnel -- so WordPress must believe it is the
+# Worker proxies /wp-admin to the tunnel -- so the application must believe it is the
 # live site, keeping the login cookie on the right domain and every admin link
 # pointing where the browser actually is. The save step flips these to http for
 # the local mirror.
-cat > "$WP_DIR/wp-config.php" <<PHPEOF
+cat > "$APP_DIR/wp-config.php" <<PHPEOF
 <?php
 define('DB_NAME', 'wordpress');
 define('DB_USER', 'wp');
@@ -59,7 +59,7 @@ define('DB_COLLATE', '');
 define('WP_HOME',    'https://${LIVE_HOST}');
 define('WP_SITEURL', 'https://${LIVE_HOST}');
 // Behind Cloudflare the connection to PHP is plain HTTP; without this
-// WordPress builds http:// URLs and wp-admin redirect-loops.
+// the application builds http:// URLs and wp-admin redirect-loops.
 if (isset(\$_SERVER['HTTP_X_FORWARDED_PROTO']) && \$_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
     \$_SERVER['HTTPS'] = 'on';
 }
@@ -81,14 +81,14 @@ if (!defined('ABSPATH')) define('ABSPATH', __DIR__ . '/');
 require_once ABSPATH . 'wp-settings.php';
 PHPEOF
 
-chown -R www-data:www-data "$WP_DIR"
+chown -R www-data:www-data "$APP_DIR"
 
 echo "--- smtp ---"
-mkdir -p "$WP_DIR/wp-content/mu-plugins"
-cat > "$WP_DIR/wp-content/mu-plugins/00-smtp.php" <<'PHPEOF'
+mkdir -p "$APP_DIR/wp-content/mu-plugins"
+cat > "$APP_DIR/wp-content/mu-plugins/00-smtp.php" <<'PHPEOF'
 <?php
 // Route wp_mail() through SMTP. There is no MTA on the runner, so without
-// this WordPress reports "the email could not be sent" for password resets.
+// this it reports "the email could not be sent" for password resets.
 add_action('phpmailer_init', function ($m) {
     if (!defined('WP_SMTP_HOST') || WP_SMTP_HOST === '') return;
     $m->isSMTP();
@@ -108,8 +108,8 @@ echo "smtp configured: $([ -n "${SMTP_HOST:-}" ] && echo yes || echo 'no host se
 
 echo "--- router + server ---"
 # php -S serves files directly and falls back to index.php, which is what
-# WordPress pretty permalinks need (there is no .htaccess handling here).
-cat > "$WP_DIR/router.php" <<'PHPEOF'
+# pretty permalinks need (there is no .htaccess handling here).
+cat > "$APP_DIR/router.php" <<'PHPEOF'
 <?php
 $p = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $f = __DIR__ . $p;
@@ -129,10 +129,10 @@ grep -q "$LIVE_HOST" /etc/hosts || echo "127.0.0.1 $LIVE_HOST" >> /etc/hosts
 # Without workers, php -S is single-threaded and wp-admin deadlocks the moment
 # it makes a second request to itself (admin-ajax, cron).
 export PHP_CLI_SERVER_WORKERS=6
-setsid nohup php -S 0.0.0.0:80 -t "$WP_DIR" "$WP_DIR/router.php" > /tmp/php.log 2>&1 &
+setsid nohup php -S 0.0.0.0:80 -t "$APP_DIR" "$APP_DIR/router.php" > /tmp/php.log 2>&1 &
 
 # Ask as the live hostname. A bare request to 127.0.0.1 gets a 301, because
-# WP_HOME is the live host and WordPress canonicalises to it -- that is correct
+# WP_HOME is the live host and the application canonicalises to it -- that is correct
 # behaviour, not a fault, so the check has to send the right Host. The
 # forwarded-proto header stands in for Cloudflare's TLS termination.
 probe() {
@@ -143,7 +143,7 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 code=$(probe)
-echo "local WordPress responded: $code"
+echo "local app responded: $code"
 case "$code" in
   200) ;;
   *) echo "expected 200 from the front page"; tail -30 /tmp/php.log; exit 1 ;;

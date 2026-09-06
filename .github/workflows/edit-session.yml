@@ -1,10 +1,10 @@
 name: Edit session
 
-# On-demand WordPress. Nothing persistent runs anywhere: the database and
-# wp-content live in R2, are restored into this runner for the length of one
+# On-demand editor. Nothing persistent runs anywhere: the database and
+# uploads live in R2, are restored into this runner for the length of one
 # editing session, and are written back continuously.
 #
-#   start  -> restore state from R2, boot WordPress, open a Cloudflare tunnel
+#   start  -> restore state from R2, boot the app, open a Cloudflare tunnel
 #   during -> autosave to R2 every 5 minutes (a dead runner loses <= 5 min)
 #   end    -> save, export the site to static HTML, commit, deploy
 #
@@ -49,7 +49,7 @@ env:
   EDIT_HOST: ${{ secrets.EDIT_HOSTNAME }}
   LIVE_HOST: ${{ secrets.SITE_HOST }}
   STATE_BUCKET: ${{ secrets.STATE_BUCKET }}
-  WP_DIR: /opt/wp
+  APP_DIR: /opt/app
 
 jobs:
   session:
@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Restore WordPress state from R2
+      - name: Restore state
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -70,14 +70,14 @@ jobs:
           aws s3 cp "s3://$STATE_BUCKET/wp-content.tar.gz"  /tmp/wp-content.tar.gz --endpoint-url "$ENDPOINT" --no-progress
           ls -l /tmp/db.sql.gz /tmp/wp-content.tar.gz
 
-      - name: Boot WordPress
+      - name: Boot the application
         env:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           SMTP_FROM: ${{ secrets.SMTP_FROM }}
-        run: sudo -E bash tools/wp-boot.sh
+        run: sudo -E bash tools/boot.sh
 
       - name: Open tunnel
         if: inputs.tunnel
@@ -108,7 +108,7 @@ jobs:
           AWS_DEFAULT_REGION: auto
           ENDPOINT: https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
           IDLE_MINUTES: ${{ inputs.idle_minutes }}
-        run: sudo -E bash tools/wp-session.sh
+        run: sudo -E bash tools/hold.sh
 
       # always() so a cancelled or failed session still writes its work back.
       - name: Save state and export the site
@@ -123,7 +123,7 @@ jobs:
           # anything, and re-publishing an unchanged site is risk with no gain.
           PUBLISH: ${{ inputs.publish && steps.hold.outcome != 'skipped' }}
           EXPORT_ONLY: ${{ inputs.export_only }}
-        run: sudo -E bash tools/wp-save.sh
+        run: sudo -E bash tools/save.sh
 
       - name: Upload the export for inspection
         if: always() && inputs.export_only
@@ -141,8 +141,8 @@ jobs:
         run: |
           set -euo pipefail
           sudo chown -R "$(id -u):$(id -g)" .
-          # The database is NEVER committed: this repo is public and wp_users
-          # holds password hashes and email addresses. .gitignore blocks the
+          # The database is NEVER committed: this repo is public and the users
+          # table holds password hashes and email addresses. .gitignore blocks the
           # patterns; this is the second line of defence.
           git add -A
           git reset -q -- '*.sql' '*.sql.gz' '*.tar.gz' 2>/dev/null || true

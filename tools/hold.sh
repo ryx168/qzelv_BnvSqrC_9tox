@@ -8,7 +8,7 @@
 set -euo pipefail
 
 STATE_BUCKET="${STATE_BUCKET:?}"
-WP_DIR="${WP_DIR:-/opt/wp}"
+APP_DIR="${APP_DIR:?}"
 IDLE_MINUTES="${IDLE_MINUTES:-60}"
 SAVE_EVERY=300                       # seconds between autosaves
 POLL=30
@@ -30,7 +30,7 @@ autosave() {
   aws s3 cp /tmp/db-save.sql.gz "s3://$STATE_BUCKET/db-latest.sql.gz" \
     --endpoint-url "$ENDPOINT" --no-progress
   # uploads are the only part of wp-content a customer can change from wp-admin
-  tar czf /tmp/wp-content-save.tar.gz -C "$WP_DIR" wp-content
+  tar czf /tmp/wp-content-save.tar.gz -C "$APP_DIR" wp-content
   aws s3 cp /tmp/wp-content-save.tar.gz "s3://$STATE_BUCKET/wp-content.tar.gz" \
     --endpoint-url "$ENDPOINT" --no-progress
   echo "$(date -u '+%H:%M:%S') autosaved ($why) db=$(stat -c%s /tmp/db-save.sql.gz)b"

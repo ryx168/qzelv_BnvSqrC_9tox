@@ -1,11 +1,11 @@
 #!/bin/bash
-# Final write-back, then export WordPress to the static site that actually gets
+# Final write-back, then export the site to the static site that actually gets
 # served. Runs even when the session was cancelled or failed (if: always()), so
 # every branch here has to tolerate a half-built environment.
 set -uo pipefail
 
 STATE_BUCKET="${STATE_BUCKET:?}"
-WP_DIR="${WP_DIR:-/opt/wp}"
+APP_DIR="${APP_DIR:?}"
 LIVE_HOST="${LIVE_HOST:?}"
 PUBLISH="${PUBLISH:-true}"
 EXPORT_ONLY="${EXPORT_ONLY:-false}"
@@ -19,7 +19,7 @@ fi
 echo "--- final save to R2 ---"
 mysqldump -uroot -proot --single-transaction --quick wordpress | gzip -9 > /tmp/db-final.sql.gz
 aws s3 cp /tmp/db-final.sql.gz "s3://$STATE_BUCKET/db-latest.sql.gz" --endpoint-url "$ENDPOINT" --no-progress
-tar czf /tmp/wp-content-final.tar.gz -C "$WP_DIR" wp-content
+tar czf /tmp/wp-content-final.tar.gz -C "$APP_DIR" wp-content
 aws s3 cp /tmp/wp-content-final.tar.gz "s3://$STATE_BUCKET/wp-content.tar.gz" --endpoint-url "$ENDPOINT" --no-progress
 # A dated copy, so a bad edit can be rolled back to any previous session.
 aws s3 cp /tmp/db-final.sql.gz "s3://$STATE_BUCKET/history/db-$(date -u '+%Y%m%d-%H%M').sql.gz" \
@@ -35,10 +35,10 @@ echo "--- export to static ---"
 # Flip the site URL to the live host so generated links are the real ones, then
 # mirror over /etc/hosts (which points the live host at this runner).
 # http, not https: the mirror is fetched over plain HTTP from 127.0.0.1, and an
-# https WP_HOME makes WordPress redirect to a port nothing is listening on. The
+# https WP_HOME makes the application redirect to a port nothing is listening on. The
 # rewrite pass below matches either scheme, so the output is identical.
-sed -i -E "s#(define\('WP_(HOME|SITEURL)', *)'[^']*'#\1'http://${LIVE_HOST}'#" "$WP_DIR/wp-config.php"
-grep -n "WP_HOME\|WP_SITEURL" "$WP_DIR/wp-config.php"
+sed -i -E "s#(define\('WP_(HOME|SITEURL)', *)'[^']*'#\1'http://${LIVE_HOST}'#" "$APP_DIR/wp-config.php"
+grep -n "WP_HOME\|WP_SITEURL" "$APP_DIR/wp-config.php"
 
 # Each workflow step gets its own sudo session, and the PHP server started in
 # the boot step does not reliably survive into this one. Rather than depend on
@@ -46,7 +46,7 @@ grep -n "WP_HOME\|WP_SITEURL" "$WP_DIR/wp-config.php"
 if ! curl -s -o /dev/null --max-time 5 "http://127.0.0.1/"; then
   echo "php server is not up -- starting one for the export"
   export PHP_CLI_SERVER_WORKERS=6
-  setsid nohup php -S 0.0.0.0:80 -t "$WP_DIR" "$WP_DIR/router.php" > /tmp/php-export.log 2>&1 &
+  setsid nohup php -S 0.0.0.0:80 -t "$APP_DIR" "$APP_DIR/router.php" > /tmp/php-export.log 2>&1 &
 fi
 for _ in $(seq 1 30); do
   code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: ${LIVE_HOST}" http://127.0.0.1/)
@@ -89,7 +89,7 @@ while read -r u; do
 done < /tmp/sitemap-urls.txt
 
 # Make the mirror portable: absolute links to the live host become root paths,
-# and the WordPress discovery <link> tags for dead endpoints go away.
+# and the discovery <link> tags for dead endpoints go away.
 find "$OUT" -name '*.html' -print0 | xargs -0 perl -pi -e "
   s#https?://${LIVE_HOST}/#/#g;
   s#<link[^>]+rel=[\"'](?:pingback|EditURI|wlwmanifest|alternate|https://api\.w\.org/)[\"'][^>]*>##g;
