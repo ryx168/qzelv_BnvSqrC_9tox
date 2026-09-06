@@ -113,6 +113,13 @@ if [ -n "$bogus" ]; then
   exit 1
 fi
 
+# The mirror is fetched over http, so any absolute URL that survives outside
+# the HTML rewrite above (robots.txt, sitemaps) still says http. Put those
+# back to https, or robots.txt advertises an insecure sitemap URL.
+find "$OUT" -maxdepth 1 -name 'robots.txt' -o -name '*.xml' | while read -r f; do
+  [ -f "$f" ] && sed -i "s#http://${LIVE_HOST}#https://${LIVE_HOST}#g" "$f"
+done
+
 pages=$(find "$OUT" -name '*.html' | wc -l)
 echo "exported $pages html files"
 if [ "$pages" -lt 10 ]; then
