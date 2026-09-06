@@ -42,9 +42,12 @@ for extra in assets; do
 done
 
 echo "--- wp-config.php ---"
-# WP_HOME/WP_SITEURL as constants beat whatever is stored in the database, so
-# the editor works on the tunnel hostname without touching site content. The
-# save step flips these to the live host before exporting.
+# WP_HOME/WP_SITEURL as constants beat whatever is stored in the database.
+# They are set to the LIVE host because the admin is reached through it -- the
+# Worker proxies /wp-admin to the tunnel -- so WordPress must believe it is the
+# live site, keeping the login cookie on the right domain and every admin link
+# pointing where the browser actually is. The save step flips these to http for
+# the local mirror.
 cat > "$WP_DIR/wp-config.php" <<PHPEOF
 <?php
 define('DB_NAME', 'wordpress');
@@ -53,8 +56,8 @@ define('DB_PASSWORD', 'wp');
 define('DB_HOST', 'localhost');
 define('DB_CHARSET', 'utf8mb4');
 define('DB_COLLATE', '');
-define('WP_HOME',    'https://${EDIT_HOST}');
-define('WP_SITEURL', 'https://${EDIT_HOST}');
+define('WP_HOME',    'https://${LIVE_HOST}');
+define('WP_SITEURL', 'https://${LIVE_HOST}');
 // Behind Cloudflare the connection to PHP is plain HTTP; without this
 // WordPress builds http:// URLs and wp-admin redirect-loops.
 if (isset(\$_SERVER['HTTP_X_FORWARDED_PROTO']) && \$_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
@@ -96,12 +99,12 @@ grep -q "$LIVE_HOST" /etc/hosts || echo "127.0.0.1 $LIVE_HOST" >> /etc/hosts
 export PHP_CLI_SERVER_WORKERS=6
 setsid nohup php -S 0.0.0.0:80 -t "$WP_DIR" "$WP_DIR/router.php" > /tmp/php.log 2>&1 &
 
-# Ask as the editor hostname. A bare request to 127.0.0.1 gets a 301, because
-# WP_HOME is the edit host and WordPress canonicalises to it -- that is correct
+# Ask as the live hostname. A bare request to 127.0.0.1 gets a 301, because
+# WP_HOME is the live host and WordPress canonicalises to it -- that is correct
 # behaviour, not a fault, so the check has to send the right Host. The
 # forwarded-proto header stands in for Cloudflare's TLS termination.
 probe() {
-  curl -s -o /dev/null -w '%{http_code}'     -H "Host: ${EDIT_HOST}" -H "X-Forwarded-Proto: https"     "http://127.0.0.1/${1:-}"
+  curl -s -o /dev/null -w '%{http_code}'     -H "Host: ${LIVE_HOST}" -H "X-Forwarded-Proto: https"     "http://127.0.0.1/${1:-}"
 }
 for _ in $(seq 1 30); do
   case "$(probe)" in 200|301|302) break ;; esac
