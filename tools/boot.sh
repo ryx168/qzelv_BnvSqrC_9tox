@@ -123,6 +123,11 @@ add_action('wp_login',        function ($login) { bsc_log('login', $login); }, 1
 add_action('wp_logout',       function () {
     $u = wp_get_current_user();
     bsc_log('logout', $u && $u->user_login ? $u->user_login : '-');
+    // Signing out means the work is finished, so end the session now rather
+    // than idling. The marker lives in /tmp on purpose: the content directory
+    // is archived, and a stale marker there would kill the next session at
+    // startup.
+    @file_put_contents('/tmp/session-stop', gmdate('c') . ' logout' . PHP_EOL);
 });
 add_action('wp_login_failed', function ($login) { bsc_log('login-FAILED', $login); });
 // Every save, so the log shows what was worked on and for how long.

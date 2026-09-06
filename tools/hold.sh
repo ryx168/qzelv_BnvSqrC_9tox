@@ -56,6 +56,13 @@ while :; do
     last_count=$count
   fi
 
+  # Signed out: stop immediately instead of waiting out the idle timer.
+  if [ -f /tmp/session-stop ]; then
+    echo "$(date -u '+%H:%M:%S') signed out -- closing the session"
+    autosave logout
+    break
+  fi
+
   idle=$(( now - last_activity ))
   if [ "$idle" -ge "$idle_limit" ]; then
     echo "idle ${idle}s >= ${idle_limit}s -- ending session"
