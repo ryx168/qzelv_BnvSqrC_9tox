@@ -35,6 +35,11 @@ concurrency:
   group: wp-edit-session
   cancel-in-progress: false
 
+# The session commits the exported site back here. The default token is
+# read-only on a public repository, which fails the push with a bare 403.
+permissions:
+  contents: write
+
 env:
   EDIT_HOST: edit.bodyspiritcentre.com
   LIVE_HOST: www.bodyspiritcentre.com
