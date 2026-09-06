@@ -8,6 +8,7 @@ STATE_BUCKET="${STATE_BUCKET:-bodyspirit-wp}"
 WP_DIR="${WP_DIR:-/opt/wp}"
 LIVE_HOST="${LIVE_HOST:-www.bodyspiritcentre.com}"
 PUBLISH="${PUBLISH:-true}"
+EXPORT_ONLY="${EXPORT_ONLY:-false}"
 REPO_DIR="$(pwd)"
 
 if ! mysqladmin -uroot -proot ping >/dev/null 2>&1; then
@@ -25,7 +26,7 @@ aws s3 cp /tmp/db-final.sql.gz "s3://$STATE_BUCKET/history/db-$(date -u '+%Y%m%d
   --endpoint-url "$ENDPOINT" --no-progress
 echo "saved $(stat -c%s /tmp/db-final.sql.gz) bytes"
 
-if [ "$PUBLISH" != "true" ]; then
+if [ "$PUBLISH" != "true" ] && [ "$EXPORT_ONLY" != "true" ]; then
   echo "publish not requested -- state saved, site untouched"
   exit 0
 fi
@@ -77,6 +78,11 @@ echo "exported $pages html files"
 if [ "$pages" -lt 10 ]; then
   echo "REFUSING to publish: only $pages pages, expected ~12. Leaving the live site alone."
   exit 1
+fi
+
+if [ "$EXPORT_ONLY" = "true" ]; then
+  echo "export_only -- mirror left at $OUT for inspection, repo and live site untouched"
+  exit 0
 fi
 
 echo "--- stage into the repo ---"

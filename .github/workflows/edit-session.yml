@@ -25,6 +25,10 @@ on:
         description: "Open the editor tunnel. Off = dry run: boot and export only, nothing exposed"
         type: boolean
         default: true
+      export_only:
+        description: "Export and upload the result for inspection, but do not commit or publish"
+        type: boolean
+        default: false
 
 concurrency:
   # Never two sessions at once -- the second would overwrite the first's work.
@@ -98,10 +102,22 @@ jobs:
           AWS_DEFAULT_REGION: auto
           ENDPOINT: https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
           PUBLISH: ${{ inputs.publish }}
+          EXPORT_ONLY: ${{ inputs.export_only }}
         run: sudo -E bash tools/wp-save.sh
 
+      - name: Upload the export for inspection
+        if: always() && inputs.export_only
+        run: sudo chown -R "$(id -u):$(id -g)" /tmp/mirror || true
+
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.export_only
+        with:
+          name: exported-site
+          path: /tmp/mirror
+          if-no-files-found: warn
+
       - name: Commit the exported site
-        if: always() && inputs.publish
+        if: always() && inputs.publish && !inputs.export_only
         run: |
           set -euo pipefail
           sudo chown -R "$(id -u):$(id -g)" .
