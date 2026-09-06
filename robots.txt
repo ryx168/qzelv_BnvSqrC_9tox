@@ -2,4 +2,4 @@ User-agent: *
 Disallow: /wp-admin/
 Allow: /wp-admin/admin-ajax.php
 
-Sitemap: https://www.bodyspiritcentre.com/wp-sitemap.xml
+Sitemap: http://www.bodyspiritcentre.com/wp-sitemap.xml

@@ -1,5 +1,0 @@
-# These run on a Linux runner. A CR at the end of "set -euo pipefail" makes
-# bash reject the option, so they must be LF regardless of who commits from
-# what platform.
-*.sh text eol=lf
-*.yml text eol=lf
