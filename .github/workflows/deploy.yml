@@ -26,8 +26,8 @@ jobs:
           set -euo pipefail
           # --delete keeps the bucket an exact mirror of the repo, so removing a
           # page here removes it from the live site. This is exactly why the
-          # WordPress state lives in a SEPARATE bucket -- it would be wiped.
-          aws s3 sync . "s3://bodyspirit" \
+          # editor state lives in a SEPARATE bucket -- it would be wiped.
+          aws s3 sync . "s3://${{ secrets.SITE_BUCKET }}" \
             --endpoint-url "$ENDPOINT" \
             --delete \
             --exclude ".git/*" \
@@ -41,7 +41,7 @@ jobs:
           set -euo pipefail
           sleep 5
           for path in "/" "/contact/" "/the-space/"; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "https://www.bodyspiritcentre.com${path}")
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ secrets.SITE_HOST }}${path}")
             echo "${path} -> ${code}"
             [ "$code" = "200" ] || { echo "FAILED: ${path} -> ${code}"; exit 1; }
           done

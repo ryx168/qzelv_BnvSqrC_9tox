@@ -5,8 +5,8 @@
 set -euo pipefail
 
 WP_DIR="${WP_DIR:-/opt/wp}"
-EDIT_HOST="${EDIT_HOST:-edit.bodyspiritcentre.com}"
-LIVE_HOST="${LIVE_HOST:-www.bodyspiritcentre.com}"
+EDIT_HOST="${EDIT_HOST:?}"
+LIVE_HOST="${LIVE_HOST:?}"
 
 echo "--- MySQL ---"
 systemctl start mysql
@@ -63,6 +63,15 @@ define('WP_SITEURL', 'https://${LIVE_HOST}');
 if (isset(\$_SERVER['HTTP_X_FORWARDED_PROTO']) && \$_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
     \$_SERVER['HTTPS'] = 'on';
 }
+// SMTP. The runner has no mail server, so without this every wp_mail()
+// fails silently -- including "lost your password". These land only in
+// wp-config.php, which sits outside wp-content and is therefore never
+// written to R2 nor committed anywhere.
+define('WP_SMTP_HOST', '${SMTP_HOST:-}');
+define('WP_SMTP_PORT', '${SMTP_PORT:-587}');
+define('WP_SMTP_USER', '${SMTP_USER:-}');
+define('WP_SMTP_PASS', '${SMTP_PASS:-}');
+define('WP_SMTP_FROM', '${SMTP_FROM:-}');
 define('DISALLOW_FILE_EDIT', true);      // no theme/plugin editor in the browser
 define('DISALLOW_FILE_MODS', true);      // no installing anything from wp-admin
 define('AUTOMATIC_UPDATER_DISABLED', true);
@@ -73,6 +82,29 @@ require_once ABSPATH . 'wp-settings.php';
 PHPEOF
 
 chown -R www-data:www-data "$WP_DIR"
+
+echo "--- smtp ---"
+mkdir -p "$WP_DIR/wp-content/mu-plugins"
+cat > "$WP_DIR/wp-content/mu-plugins/00-smtp.php" <<'PHPEOF'
+<?php
+// Route wp_mail() through SMTP. There is no MTA on the runner, so without
+// this WordPress reports "the email could not be sent" for password resets.
+add_action('phpmailer_init', function ($m) {
+    if (!defined('WP_SMTP_HOST') || WP_SMTP_HOST === '') return;
+    $m->isSMTP();
+    $m->Host       = WP_SMTP_HOST;
+    $m->Port       = (int) WP_SMTP_PORT;
+    $m->SMTPAuth   = true;
+    $m->Username   = WP_SMTP_USER;
+    $m->Password   = WP_SMTP_PASS;
+    $m->SMTPSecure = ((int) WP_SMTP_PORT === 465) ? 'ssl' : 'tls';
+});
+// The provider only accepts a verified sender, so force the From address.
+add_filter('wp_mail_from', function ($e) {
+    return (defined('WP_SMTP_FROM') && WP_SMTP_FROM !== '') ? WP_SMTP_FROM : $e;
+});
+PHPEOF
+echo "smtp configured: $([ -n "${SMTP_HOST:-}" ] && echo yes || echo 'no host set')"
 
 echo "--- router + server ---"
 # php -S serves files directly and falls back to index.php, which is what

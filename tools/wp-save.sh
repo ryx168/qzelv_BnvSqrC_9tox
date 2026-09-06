@@ -4,9 +4,9 @@
 # every branch here has to tolerate a half-built environment.
 set -uo pipefail
 
-STATE_BUCKET="${STATE_BUCKET:-bodyspirit-wp}"
+STATE_BUCKET="${STATE_BUCKET:?}"
 WP_DIR="${WP_DIR:-/opt/wp}"
-LIVE_HOST="${LIVE_HOST:-www.bodyspiritcentre.com}"
+LIVE_HOST="${LIVE_HOST:?}"
 PUBLISH="${PUBLISH:-true}"
 EXPORT_ONLY="${EXPORT_ONLY:-false}"
 REPO_DIR="$(pwd)"
@@ -37,7 +37,7 @@ echo "--- export to static ---"
 # http, not https: the mirror is fetched over plain HTTP from 127.0.0.1, and an
 # https WP_HOME makes WordPress redirect to a port nothing is listening on. The
 # rewrite pass below matches either scheme, so the output is identical.
-sed -i "s#https://[a-z.]*bodyspiritcentre.com'#http://${LIVE_HOST}'#g" "$WP_DIR/wp-config.php"
+sed -i -E "s#(define\('WP_(HOME|SITEURL)', *)'[^']*'#\1'http://${LIVE_HOST}'#" "$WP_DIR/wp-config.php"
 grep -n "WP_HOME\|WP_SITEURL" "$WP_DIR/wp-config.php"
 
 # Each workflow step gets its own sudo session, and the PHP server started in

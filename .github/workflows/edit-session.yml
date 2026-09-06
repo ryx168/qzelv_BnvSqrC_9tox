@@ -41,9 +41,9 @@ permissions:
   contents: write
 
 env:
-  EDIT_HOST: edit.bodyspiritcentre.com
-  LIVE_HOST: www.bodyspiritcentre.com
-  STATE_BUCKET: bodyspirit-wp
+  EDIT_HOST: ${{ secrets.EDIT_HOSTNAME }}
+  LIVE_HOST: ${{ secrets.SITE_HOST }}
+  STATE_BUCKET: ${{ secrets.STATE_BUCKET }}
   WP_DIR: /opt/wp
 
 jobs:
@@ -66,6 +66,12 @@ jobs:
           ls -l /tmp/db.sql.gz /tmp/wp-content.tar.gz
 
       - name: Boot WordPress
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
         run: sudo -E bash tools/wp-boot.sh
 
       - name: Open tunnel

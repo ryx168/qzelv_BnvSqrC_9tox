@@ -7,7 +7,7 @@
 # entire session's work. At 5-minute intervals the worst case is 5 minutes.
 set -euo pipefail
 
-STATE_BUCKET="${STATE_BUCKET:-bodyspirit-wp}"
+STATE_BUCKET="${STATE_BUCKET:?}"
 WP_DIR="${WP_DIR:-/opt/wp}"
 IDLE_MINUTES="${IDLE_MINUTES:-60}"
 SAVE_EVERY=300                       # seconds between autosaves
