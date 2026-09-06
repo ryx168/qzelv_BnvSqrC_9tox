@@ -83,10 +83,22 @@ grep -q "$LIVE_HOST" /etc/hosts || echo "127.0.0.1 $LIVE_HOST" >> /etc/hosts
 export PHP_CLI_SERVER_WORKERS=6
 nohup php -S 0.0.0.0:80 -t "$WP_DIR" "$WP_DIR/router.php" > /tmp/php.log 2>&1 &
 
+# Ask as the editor hostname. A bare request to 127.0.0.1 gets a 301, because
+# WP_HOME is the edit host and WordPress canonicalises to it -- that is correct
+# behaviour, not a fault, so the check has to send the right Host. The
+# forwarded-proto header stands in for Cloudflare's TLS termination.
+probe() {
+  curl -s -o /dev/null -w '%{http_code}'     -H "Host: ${EDIT_HOST}" -H "X-Forwarded-Proto: https"     "http://127.0.0.1/$1"
+}
 for _ in $(seq 1 30); do
-  curl -fsS -o /dev/null http://127.0.0.1/ && break
+  case "$(probe)" in 200|301|302) break ;; esac
   sleep 1
 done
-code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/)
+code=$(probe)
 echo "local WordPress responded: $code"
-[ "$code" = "200" ] || { tail -20 /tmp/php.log; exit 1; }
+case "$code" in
+  200) ;;
+  *) echo "expected 200 from the front page"; tail -30 /tmp/php.log; exit 1 ;;
+esac
+admin=$(probe "wp-admin/")
+echo "wp-admin responded: $admin"   # 302 to wp-login is correct when logged out
