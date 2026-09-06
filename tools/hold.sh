@@ -37,6 +37,9 @@ autosave() {
   tar czf /tmp/wp-content-save.tar.gz -C "$APP_DIR" wp-content
   aws s3 cp /tmp/wp-content-save.tar.gz "s3://$STATE_BUCKET/wp-content.tar.gz" \
     --endpoint-url "$ENDPOINT" --no-progress
+  if [ -f "$APP_DIR/wp-content/activity.log" ]; then
+    aws s3 cp "$APP_DIR/wp-content/activity.log" "s3://$STATE_BUCKET/activity.log"       --endpoint-url "$ENDPOINT" --no-progress >/dev/null
+  fi
   echo "$(date -u '+%H:%M:%S') autosaved ($why) db=$(stat -c%s /tmp/db-save.sql.gz)b"
 }
 

@@ -106,6 +106,35 @@ add_filter('wp_mail_from', function ($e) {
 PHPEOF
 echo "smtp configured: $([ -n "${SMTP_HOST:-}" ] && echo yes || echo 'no host set')"
 
+echo "--- activity log ---"
+# Who signed in, when, what they changed, and failed attempts. Lives in the
+# content directory, which is archived to object storage at every save, so the
+# log survives across sessions and accumulates rather than resetting.
+cat > "$APP_DIR/wp-content/mu-plugins/01-activity.php" <<'PHPEOF'
+<?php
+function bsc_log($event, $detail = '') {
+    $line = sprintf("%s	%s	%s	%s
+",
+        gmdate('Y-m-d H:i:s'), $event,
+        $detail, $_SERVER['HTTP_CF_CONNECTING_IP'] ?? ($_SERVER['REMOTE_ADDR'] ?? '-'));
+    @file_put_contents(WP_CONTENT_DIR . '/activity.log', $line, FILE_APPEND | LOCK_EX);
+}
+add_action('wp_login',        function ($login) { bsc_log('login', $login); }, 10, 1);
+add_action('wp_logout',       function () {
+    $u = wp_get_current_user();
+    bsc_log('logout', $u && $u->user_login ? $u->user_login : '-');
+});
+add_action('wp_login_failed', function ($login) { bsc_log('login-FAILED', $login); });
+// Every save, so the log shows what was worked on and for how long.
+add_action('save_post', function ($id, $post, $update) {
+    if (wp_is_post_revision($id) || wp_is_post_autosave($id)) return;
+    if ($post->post_status === 'auto-draft') return;
+    $u = wp_get_current_user();
+    bsc_log('saved', sprintf('%s | %s | "%s"',
+        $u && $u->user_login ? $u->user_login : '-', $post->post_type, $post->post_title));
+}, 10, 3);
+PHPEOF
+
 echo "--- router + server ---"
 # php -S serves files directly and falls back to index.php, which is what
 # pretty permalinks need (there is no .htaccess handling here).

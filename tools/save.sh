@@ -26,6 +26,14 @@ aws s3 cp /tmp/db-final.sql.gz "s3://$STATE_BUCKET/history/db-$(date -u '+%Y%m%d
   --endpoint-url "$ENDPOINT" --no-progress
 echo "saved $(stat -c%s /tmp/db-final.sql.gz) bytes"
 
+# The activity log, readable without waiting for a run to finish.
+if [ -f "$APP_DIR/wp-content/activity.log" ]; then
+  aws s3 cp "$APP_DIR/wp-content/activity.log" "s3://$STATE_BUCKET/activity.log"     --endpoint-url "$ENDPOINT" --no-progress
+  echo "activity: $(wc -l < "$APP_DIR/wp-content/activity.log") entries"
+  echo "--- this session ---"
+  tail -20 "$APP_DIR/wp-content/activity.log" || true
+fi
+
 if [ "$PUBLISH" != "true" ] && [ "$EXPORT_ONLY" != "true" ]; then
   echo "publish not requested -- state saved, site untouched"
   exit 0
