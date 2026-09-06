@@ -21,7 +21,11 @@ last_save=$(date +%s)
 # php -S logs one line per request, so the line count is a usable activity
 # signal. Asset requests count too, which is fine -- a browser sitting on
 # wp-admin is a session in use.
-requests() { wc -l < /tmp/php.log 2>/dev/null || echo 0; }
+# Readiness polls are tagged __probe and must NOT count as activity: the
+# waiting page and any bot hitting the admin URL would otherwise hold a
+# session open indefinitely, which is exactly what the idle stop exists to
+# prevent.
+requests() { grep -vc "__probe" /tmp/php.log 2>/dev/null || echo 0; }
 
 autosave() {
   local why="$1"
