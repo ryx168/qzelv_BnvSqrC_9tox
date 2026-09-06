@@ -34,7 +34,10 @@ fi
 echo "--- export to static ---"
 # Flip the site URL to the live host so generated links are the real ones, then
 # mirror over /etc/hosts (which points the live host at this runner).
-sed -i "s#https://[a-z.]*bodyspiritcentre.com'#https://${LIVE_HOST}'#g" "$WP_DIR/wp-config.php"
+# http, not https: the mirror is fetched over plain HTTP from 127.0.0.1, and an
+# https WP_HOME makes WordPress redirect to a port nothing is listening on. The
+# rewrite pass below matches either scheme, so the output is identical.
+sed -i "s#https://[a-z.]*bodyspiritcentre.com'#http://${LIVE_HOST}'#g" "$WP_DIR/wp-config.php"
 grep -n "WP_HOME\|WP_SITEURL" "$WP_DIR/wp-config.php"
 
 # Each workflow step gets its own sudo session, and the PHP server started in
