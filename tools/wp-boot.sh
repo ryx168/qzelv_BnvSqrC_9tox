@@ -88,7 +88,7 @@ nohup php -S 0.0.0.0:80 -t "$WP_DIR" "$WP_DIR/router.php" > /tmp/php.log 2>&1 &
 # behaviour, not a fault, so the check has to send the right Host. The
 # forwarded-proto header stands in for Cloudflare's TLS termination.
 probe() {
-  curl -s -o /dev/null -w '%{http_code}'     -H "Host: ${EDIT_HOST}" -H "X-Forwarded-Proto: https"     "http://127.0.0.1/$1"
+  curl -s -o /dev/null -w '%{http_code}'     -H "Host: ${EDIT_HOST}" -H "X-Forwarded-Proto: https"     "http://127.0.0.1/${1:-}"
 }
 for _ in $(seq 1 30); do
   case "$(probe)" in 200|301|302) break ;; esac
