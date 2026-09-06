@@ -15,8 +15,13 @@ on:
   workflow_dispatch:
     inputs:
       idle_minutes:
+        # Deliberately short. /wp-admin is scanned by bots constantly, and each
+        # hit auto-starts a session; a long timeout would keep the editor online
+        # almost permanently and burn the monthly minute budget. An open wp-admin
+        # tab sends heartbeat requests about once a minute, so a real editing
+        # session stays alive on its own.
         description: "Stop after this many minutes with no activity"
-        default: "60"
+        default: "15"
       publish:
         description: "Publish to the live site when the session ends"
         type: boolean
